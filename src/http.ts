@@ -160,7 +160,14 @@ app.post("/mcp", authMiddleware, async (req: Request, res: Response) => {
           console.error(`[MCP] Session fermée : ${transport.sessionId}`);
         }
       };
-      const server = createServer();
+      // Per-session Dolibarr target from headers (both or neither); else env.
+      const dolUrl = req.headers["x-dolibarr-url"] as string | undefined;
+      const dolKey = req.headers["x-dolibarr-key"] as string | undefined;
+      if ((dolUrl && !dolKey) || (!dolUrl && dolKey)) {
+        res.status(400).json({ error: "Fournissez X-Dolibarr-Url ET X-Dolibarr-Key, ou aucun des deux." });
+        return;
+      }
+      const server = createServer(dolUrl && dolKey ? { url: dolUrl, key: dolKey } : undefined);
       await server.connect(transport);
     } else {
       res.status(400).json({ error: "Session invalide. Envoyez d'abord une requête d'initialisation." });

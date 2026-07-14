@@ -131,9 +131,12 @@ export async function callTool(
   return routeTool(name, args || {}, api);
 }
 
-export function createServer(): Server {
-  const DOLIBARR_URL = process.env.DOLIBARR_URL;
-  const DOLIBARR_API_KEY = process.env.DOLIBARR_API_KEY;
+export function createServer(creds?: { url?: string; key?: string }): Server {
+  // Per-connection Dolibarr target: an HTTP/MCP session can supply its own
+  // url + key (e.g. from X-Dolibarr-* headers) so one shared server can front
+  // many Dolibarr instances. Falls back to the process env when not provided.
+  const DOLIBARR_URL = (creds && creds.url) || process.env.DOLIBARR_URL;
+  const DOLIBARR_API_KEY = (creds && creds.key) || process.env.DOLIBARR_API_KEY;
   if (!DOLIBARR_URL || !DOLIBARR_API_KEY) throw new Error("DOLIBARR_URL et DOLIBARR_API_KEY requis.");
   const api = new DolibarrAPI(DOLIBARR_URL, DOLIBARR_API_KEY);
   const server = new Server({ name: "mcp-dolibarr", version: "5.0.0" }, { capabilities: { tools: {} } });
