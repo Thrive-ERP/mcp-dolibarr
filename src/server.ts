@@ -100,6 +100,28 @@ async function routeTool(name: string, args: Record<string, unknown>, api: Dolib
   throw new Error(`Outil inconnu : ${name}`);
 }
 
+// ── REST layer support ──
+// Expose the tool catalogue and a direct name→handler call so the plain HTTP
+// REST routes (GET /tools, POST /tools/:name) can reuse the exact same tools
+// and dispatch as the MCP protocol path, without the MCP session handshake.
+export { ALL_TOOLS };
+
+let _restApi: DolibarrAPI | null = null;
+function getRestApi(): DolibarrAPI {
+  if (_restApi) return _restApi;
+  const DOLIBARR_URL = process.env.DOLIBARR_URL;
+  const DOLIBARR_API_KEY = process.env.DOLIBARR_API_KEY;
+  if (!DOLIBARR_URL || !DOLIBARR_API_KEY) throw new Error("DOLIBARR_URL et DOLIBARR_API_KEY requis.");
+  _restApi = new DolibarrAPI(DOLIBARR_URL, DOLIBARR_API_KEY);
+  return _restApi;
+}
+
+/** Call a tool by name with a plain args object. Returns the tool's text result.
+ *  Throws `Outil inconnu : <name>` for an unknown tool (mirrors routeTool). */
+export async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
+  return routeTool(name, args || {}, getRestApi());
+}
+
 export function createServer(): Server {
   const DOLIBARR_URL = process.env.DOLIBARR_URL;
   const DOLIBARR_API_KEY = process.env.DOLIBARR_API_KEY;

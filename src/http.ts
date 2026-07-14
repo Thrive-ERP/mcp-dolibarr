@@ -12,7 +12,7 @@ import express, { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { createServer } from "./server.js";
+import { createServer, ALL_TOOLS, callTool } from "./server.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -62,6 +62,53 @@ const sessions = new Map<string, StreamableHTTPServerTransport>();
 setInterval(() => {
   console.error(`[MCP] Sessions actives : ${sessions.size}`);
 }, 30 * 60 * 1000);
+
+// ──────────────────────────────────────────────────────────────────────────
+// REST layer — plain "one tool per route" HTTP API over the same tools.
+// Lets any HTTP client call a Dolibarr tool without the MCP session handshake.
+//   GET  /tools            → list every tool { name, description, inputSchema }
+//   GET  /tools/:name      → the schema for one tool
+//   POST /tools/:name      → run the tool; JSON body = the tool's arguments
+// Auth: same Bearer token (MCP_API_TOKEN) as the /mcp endpoint.
+// ──────────────────────────────────────────────────────────────────────────
+
+// GET /tools — catalogue
+app.get("/tools", authMiddleware, (_req: Request, res: Response) => {
+  res.json({
+    count: ALL_TOOLS.length,
+    tools: ALL_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    })),
+  });
+});
+
+// GET /tools/:name — one tool's schema
+app.get("/tools/:name", authMiddleware, (req: Request, res: Response) => {
+  const tool = ALL_TOOLS.find((t) => t.name === req.params.name);
+  if (!tool) {
+    res.status(404).json({ ok: false, error: `Outil inconnu : ${req.params.name}` });
+    return;
+  }
+  res.json({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema });
+});
+
+// POST /tools/:name — invoke a tool; request body is the args object
+app.post("/tools/:name", authMiddleware, async (req: Request, res: Response) => {
+  const name = req.params.name;
+  if (!ALL_TOOLS.some((t) => t.name === name)) {
+    res.status(404).json({ ok: false, error: `Outil inconnu : ${name}` });
+    return;
+  }
+  const args = (req.body && typeof req.body === "object") ? req.body : {};
+  try {
+    const result = await callTool(name, args as Record<string, unknown>);
+    res.json({ ok: true, tool: name, result });
+  } catch (err) {
+    res.status(400).json({ ok: false, tool: name, error: err instanceof Error ? err.message : "Erreur inconnue" });
+  }
+});
 
 // POST — client → serveur
 app.post("/mcp", authMiddleware, async (req: Request, res: Response) => {
