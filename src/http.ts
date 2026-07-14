@@ -72,6 +72,24 @@ setInterval(() => {
 // Auth: same Bearer token (MCP_API_TOKEN) as the /mcp endpoint.
 // ──────────────────────────────────────────────────────────────────────────
 
+// GET / — landing index so the base URL shows something useful, not a 404.
+// Unauthenticated (like /health); lists the routes but no data.
+app.get("/", (_req: Request, res: Response) => {
+  res.json({
+    service: "mcp-dolibarr",
+    description: "REST API over the Dolibarr MCP tools. Auth: Authorization: Bearer <token> (except /health and /).",
+    tools: ALL_TOOLS.length,
+    endpoints: {
+      "GET /health": "liveness (no auth)",
+      "GET /tools": "list every tool (name, description, inputSchema)",
+      "GET /tools/:name": "one tool's schema",
+      "POST /tools/:name": "run a tool; JSON body = arguments -> { ok, result }",
+      "POST /mcp": "MCP streamable-HTTP protocol endpoint",
+    },
+    docs: "https://agent-workflow.accellier.net/docs/DOLIBARR-API/",
+  });
+});
+
 // GET /tools — catalogue
 app.get("/tools", authMiddleware, (_req: Request, res: Response) => {
   res.json({
