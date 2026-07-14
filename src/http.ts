@@ -120,8 +120,17 @@ app.post("/tools/:name", authMiddleware, async (req: Request, res: Response) => 
     return;
   }
   const args = (req.body && typeof req.body === "object") ? req.body : {};
+  // Optional per-request Dolibarr target: both headers or neither (else 400).
+  // When absent, callTool falls back to the DOLIBARR_URL/KEY from .env.
+  const dolUrl = req.header("X-Dolibarr-Url");
+  const dolKey = req.header("X-Dolibarr-Key");
+  if ((dolUrl && !dolKey) || (!dolUrl && dolKey)) {
+    res.status(400).json({ ok: false, tool: name, error: "Provide both X-Dolibarr-Url and X-Dolibarr-Key, or neither." });
+    return;
+  }
+  const creds = (dolUrl && dolKey) ? { url: dolUrl, key: dolKey } : undefined;
   try {
-    const result = await callTool(name, args as Record<string, unknown>);
+    const result = await callTool(name, args as Record<string, unknown>, creds);
     res.json({ ok: true, tool: name, result });
   } catch (err) {
     res.status(400).json({ ok: false, tool: name, error: err instanceof Error ? err.message : "Erreur inconnue" });

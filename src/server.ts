@@ -117,9 +117,18 @@ function getRestApi(): DolibarrAPI {
 }
 
 /** Call a tool by name with a plain args object. Returns the tool's text result.
- *  Throws `Outil inconnu : <name>` for an unknown tool (mirrors routeTool). */
-export async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
-  return routeTool(name, args || {}, getRestApi());
+ *  Throws `Outil inconnu : <name>` for an unknown tool (mirrors routeTool).
+ *  When `creds` (url + key) is given, the call targets that Dolibarr instance;
+ *  otherwise it falls back to the DOLIBARR_URL/KEY from the environment. */
+export async function callTool(
+  name: string,
+  args: Record<string, unknown>,
+  creds?: { url: string; key: string },
+): Promise<string> {
+  const api = creds && creds.url && creds.key
+    ? new DolibarrAPI(creds.url, creds.key)
+    : getRestApi();
+  return routeTool(name, args || {}, api);
 }
 
 export function createServer(): Server {
