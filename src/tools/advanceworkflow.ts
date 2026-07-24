@@ -75,6 +75,13 @@ export const advanceWorkflowTools: Tool[] = [
   { name: 'aw_delete_workflow', description: 'Delete a workflow.', inputSchema: ID_ONLY },
   { name: 'aw_list_workflow_steps', description: 'List the steps of a workflow.', inputSchema: { type: 'object', properties: { id: { type: 'integer', description: 'Workflow id' }, ...LIST_PROPS }, required: ['id'] } },
 
+  // ---------------- Triggers (lookup) ----------------
+  {
+    name: 'aw_list_triggers',
+    description: "List Dolibarr triggers (c_action_trigger) to resolve the numeric triggerid a workflow binds to. The id is a per-installation rowid — always look it up here, never guess. Optional exact code filter, e.g. BILL_VALIDATE for customer invoice validation.",
+    inputSchema: { type: 'object', properties: { code: { type: 'string', description: 'Exact trigger code to filter by, e.g. BILL_VALIDATE (omit to list all)' } } },
+  },
+
   // ---------------- Steps ----------------
   { name: 'aw_get_step', description: 'Get one workflow step by id.', inputSchema: ID_ONLY },
   {
@@ -215,6 +222,10 @@ export async function handleAdvanceWorkflowTool(name: string, args: Args, api: D
       return json(await api.delete(`${BASE}/workflows/${requiredId(args)}`));
     case 'aw_list_workflow_steps':
       return json(await api.get(`${BASE}/workflows/${requiredId(args)}/steps`, listParams(args)));
+
+    // ---- Triggers ----
+    case 'aw_list_triggers':
+      return json(await api.get(`${BASE}/triggers`, { code: args.code }));
 
     // ---- Steps ----
     case 'aw_get_step':
