@@ -12,7 +12,7 @@ import express, { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { createServer } from "./server.js";
+import { createServer, ALL_TOOLS, callTool } from "./server.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -63,6 +63,80 @@ setInterval(() => {
   console.error(`[MCP] Sessions actives : ${sessions.size}`);
 }, 30 * 60 * 1000);
 
+// ──────────────────────────────────────────────────────────────────────────
+// REST layer — plain "one tool per route" HTTP API over the same tools.
+// Lets any HTTP client call a Dolibarr tool without the MCP session handshake.
+//   GET  /tools            → list every tool { name, description, inputSchema }
+//   GET  /tools/:name      → the schema for one tool
+//   POST /tools/:name      → run the tool; JSON body = the tool's arguments
+// Auth: same Bearer token (MCP_API_TOKEN) as the /mcp endpoint.
+// ──────────────────────────────────────────────────────────────────────────
+
+// GET / — landing index so the base URL shows something useful, not a 404.
+// Unauthenticated (like /health); lists the routes but no data.
+app.get("/", (_req: Request, res: Response) => {
+  res.json({
+    service: "mcp-dolibarr",
+    description: "REST API over the Dolibarr MCP tools. Auth: Authorization: Bearer <token> (except /health and /).",
+    tools: ALL_TOOLS.length,
+    endpoints: {
+      "GET /health": "liveness (no auth)",
+      "GET /tools": "list every tool (name, description, inputSchema)",
+      "GET /tools/:name": "one tool's schema",
+      "POST /tools/:name": "run a tool; JSON body = arguments -> { ok, result }",
+      "POST /mcp": "MCP streamable-HTTP protocol endpoint",
+    },
+    docs: "https://agent-workflow.accellier.net/docs/DOLIBARR-API/",
+  });
+});
+
+// GET /tools — catalogue
+app.get("/tools", authMiddleware, (_req: Request, res: Response) => {
+  res.json({
+    count: ALL_TOOLS.length,
+    tools: ALL_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    })),
+  });
+});
+
+// GET /tools/:name — one tool's schema
+app.get("/tools/:name", authMiddleware, (req: Request, res: Response) => {
+  const tool = ALL_TOOLS.find((t) => t.name === req.params.name);
+  if (!tool) {
+    res.status(404).json({ ok: false, error: `Outil inconnu : ${req.params.name}` });
+    return;
+  }
+  res.json({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema });
+});
+
+// POST /tools/:name — invoke a tool; request body is the args object
+app.post("/tools/:name", authMiddleware, async (req: Request, res: Response) => {
+  const name = req.params.name;
+  if (!ALL_TOOLS.some((t) => t.name === name)) {
+    res.status(404).json({ ok: false, error: `Outil inconnu : ${name}` });
+    return;
+  }
+  const args = (req.body && typeof req.body === "object") ? req.body : {};
+  // Optional per-request Dolibarr target: both headers or neither (else 400).
+  // When absent, callTool falls back to the DOLIBARR_URL/KEY from .env.
+  const dolUrl = req.header("X-Dolibarr-Url");
+  const dolKey = req.header("X-Dolibarr-Key");
+  if ((dolUrl && !dolKey) || (!dolUrl && dolKey)) {
+    res.status(400).json({ ok: false, tool: name, error: "Provide both X-Dolibarr-Url and X-Dolibarr-Key, or neither." });
+    return;
+  }
+  const creds = (dolUrl && dolKey) ? { url: dolUrl, key: dolKey } : undefined;
+  try {
+    const result = await callTool(name, args as Record<string, unknown>, creds);
+    res.json({ ok: true, tool: name, result });
+  } catch (err) {
+    res.status(400).json({ ok: false, tool: name, error: err instanceof Error ? err.message : "Erreur inconnue" });
+  }
+});
+
 // POST — client → serveur
 app.post("/mcp", authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -86,7 +160,14 @@ app.post("/mcp", authMiddleware, async (req: Request, res: Response) => {
           console.error(`[MCP] Session fermée : ${transport.sessionId}`);
         }
       };
-      const server = createServer();
+      // Per-session Dolibarr target from headers (both or neither); else env.
+      const dolUrl = req.headers["x-dolibarr-url"] as string | undefined;
+      const dolKey = req.headers["x-dolibarr-key"] as string | undefined;
+      if ((dolUrl && !dolKey) || (!dolUrl && dolKey)) {
+        res.status(400).json({ error: "Fournissez X-Dolibarr-Url ET X-Dolibarr-Key, ou aucun des deux." });
+        return;
+      }
+      const server = createServer(dolUrl && dolKey ? { url: dolUrl, key: dolKey } : undefined);
       await server.connect(transport);
     } else {
       res.status(400).json({ error: "Session invalide. Envoyez d'abord une requête d'initialisation." });

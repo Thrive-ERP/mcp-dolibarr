@@ -100,9 +100,43 @@ async function routeTool(name: string, args: Record<string, unknown>, api: Dolib
   throw new Error(`Outil inconnu : ${name}`);
 }
 
-export function createServer(): Server {
+// ── REST layer support ──
+// Expose the tool catalogue and a direct name→handler call so the plain HTTP
+// REST routes (GET /tools, POST /tools/:name) can reuse the exact same tools
+// and dispatch as the MCP protocol path, without the MCP session handshake.
+export { ALL_TOOLS };
+
+let _restApi: DolibarrAPI | null = null;
+function getRestApi(): DolibarrAPI {
+  if (_restApi) return _restApi;
   const DOLIBARR_URL = process.env.DOLIBARR_URL;
   const DOLIBARR_API_KEY = process.env.DOLIBARR_API_KEY;
+  if (!DOLIBARR_URL || !DOLIBARR_API_KEY) throw new Error("DOLIBARR_URL et DOLIBARR_API_KEY requis.");
+  _restApi = new DolibarrAPI(DOLIBARR_URL, DOLIBARR_API_KEY);
+  return _restApi;
+}
+
+/** Call a tool by name with a plain args object. Returns the tool's text result.
+ *  Throws `Outil inconnu : <name>` for an unknown tool (mirrors routeTool).
+ *  When `creds` (url + key) is given, the call targets that Dolibarr instance;
+ *  otherwise it falls back to the DOLIBARR_URL/KEY from the environment. */
+export async function callTool(
+  name: string,
+  args: Record<string, unknown>,
+  creds?: { url: string; key: string },
+): Promise<string> {
+  const api = creds && creds.url && creds.key
+    ? new DolibarrAPI(creds.url, creds.key)
+    : getRestApi();
+  return routeTool(name, args || {}, api);
+}
+
+export function createServer(creds?: { url?: string; key?: string }): Server {
+  // Per-connection Dolibarr target: an HTTP/MCP session can supply its own
+  // url + key (e.g. from X-Dolibarr-* headers) so one shared server can front
+  // many Dolibarr instances. Falls back to the process env when not provided.
+  const DOLIBARR_URL = (creds && creds.url) || process.env.DOLIBARR_URL;
+  const DOLIBARR_API_KEY = (creds && creds.key) || process.env.DOLIBARR_API_KEY;
   if (!DOLIBARR_URL || !DOLIBARR_API_KEY) throw new Error("DOLIBARR_URL et DOLIBARR_API_KEY requis.");
   const api = new DolibarrAPI(DOLIBARR_URL, DOLIBARR_API_KEY);
   const server = new Server({ name: "mcp-dolibarr", version: "5.0.0" }, { capabilities: { tools: {} } });
