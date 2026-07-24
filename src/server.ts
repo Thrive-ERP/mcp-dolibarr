@@ -34,6 +34,7 @@ import { accountingConfigTools, handleAccountingConfigTool } from "./tools/accou
 import { pricingTools, handlePricingTool } from "./tools/pricing.js";
 import { notificationTools, handleNotificationTool } from "./tools/notifications.js";
 import { advanceModuleBuilderTools, handleAdvanceModuleBuilderTool } from "./tools/advancemodulebuilder.js";
+import { advanceWorkflowTools, handleAdvanceWorkflowTool } from "./tools/advanceworkflow.js";
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ const ALL_TOOLS = [
   ...pricingTools,
   ...notificationTools,
   ...advanceModuleBuilderTools,
+  ...advanceWorkflowTools,
 ];
 
 async function routeTool(name: string, args: Record<string, unknown>, api: DolibarrAPI): Promise<string> {
@@ -93,6 +95,7 @@ async function routeTool(name: string, args: Record<string, unknown>, api: Dolib
     { tools: pricingTools, h: handlePricingTool },
     { tools: notificationTools, h: handleNotificationTool },
     { tools: advanceModuleBuilderTools, h: handleAdvanceModuleBuilderTool },
+    { tools: advanceWorkflowTools, h: handleAdvanceWorkflowTool },
   ];
   for (const { tools, h } of sets) {
     if (tools.map(t => t.name).includes(name)) return h(name, args, api);
