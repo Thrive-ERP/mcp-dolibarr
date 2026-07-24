@@ -82,6 +82,12 @@ export const advanceWorkflowTools: Tool[] = [
     inputSchema: { type: 'object', properties: { code: { type: 'string', description: 'Exact trigger code to filter by, e.g. BILL_VALIDATE (omit to list all)' } } },
   },
 
+  {
+    name: 'aw_list_mail_variables',
+    description: "List the email template placeholders (__KEY__) available for a trigger/object, with example values. Call this BEFORE writing an email body so you use real keys (e.g. __REF__, __MYCOMPANY_NAME__, __THIRDPARTY_NAME__, __AMOUNT_FORMATTED__, __DATE_VALIDATION__, __OBJECT_<FIELD>__) — unknown placeholders render blank. Pass a trigger code (e.g. BILL_VALIDATE) or an element (e.g. facture, commande).",
+    inputSchema: { type: 'object', properties: { triggercode: { type: 'string', description: 'Trigger code, e.g. BILL_VALIDATE' }, element: { type: 'string', description: 'Element type, e.g. facture, commande, propal (alternative to triggercode)' } } },
+  },
+
   // ---------------- Steps ----------------
   { name: 'aw_get_step', description: 'Get one workflow step by id.', inputSchema: ID_ONLY },
   {
@@ -226,6 +232,8 @@ export async function handleAdvanceWorkflowTool(name: string, args: Args, api: D
     // ---- Triggers ----
     case 'aw_list_triggers':
       return json(await api.get(`${BASE}/triggers`, { code: args.code }));
+    case 'aw_list_mail_variables':
+      return json(await api.get(`${BASE}/mailvariables`, { triggercode: args.triggercode, element: args.element }));
 
     // ---- Steps ----
     case 'aw_get_step':
